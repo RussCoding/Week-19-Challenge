@@ -1,64 +1,75 @@
-const APP_PREFIX = 'BudgetTracker-';
-const VERSION = 'V.01.00';
-const CACHE_NAME = APP_PREFIX + VERSION;
-
 const FILES_TO_CACHE = [
-  "./icons/icon-72x72.png",
-  "./icons/icon-96x96.png",
-  "./icons/icon-128x128.png",
-  "./icons/icon-144x144.png",
-  "./icons/icon-152x152.png",
-  "./icons/icon-192x192.png",
-  "./icons/icon-384x384.png",
-  "./icons/icon-512x512.png",
-  "./manifest.json",
-  "./index.html",
-  "./js/idb.js",
-  "./js/index.js",
-  "./css/styles.css"
-];
-//caching all required files for offline functionality
-self.addEventListener('install', function(e) {
-    e.waitUntil(
-        caches.open(CACHE_NAME).then(function(cache) {
-            console.log('Caching data to ' + CACHE_NAME);
-            return cache.addAll(FILES_TO_CACHE);
-        })
-    )
-});
-
-//retrieve cached data
-self.addEventListener("fetch", function(e) {
-    console.log('Requesting: ' + e.request.url);
-    e.respondWith(
-        caches.match(e.request).then(function (request){
-            if (request) {
-                console.log('Fetching cached data: ' + e.request.url);
-                return request;
-            }
-            else {
-                console.log('File is not cached, getting: ' + e.request.url);
-                return fetch(e.request);
-            }
-        })
+    "/",
+    "/index.html",
+    "/assets/css/styles.css",
+    "/assets/js/index.js",
+    "/assets/js/db.js",
+    "/assets/images/icons/icon-192x192.png",
+    "/assets/images/icons/icon-512x512.png",
+    "https://stackpath.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css",
+    "https://cdn.jsdelivr.net/npm/chart.js@2.8.0"
+  ];
+  
+  const CACHE_NAME = "static-cache-v1";
+  const DATA_CACHE_NAME = "data-cache-v1";
+  
+  self.addEventListener("install", (evt) => {
+    evt.waitUntil(
+      caches.open(CACHE_NAME).then((cache) => {
+        return cache.addAll(FILES_TO_CACHE);
+      })
     );
-});
-
-
-//deleting old cached data
-self.addEventListener('activate', function(e) {
-    e.waitUntil(
-        caches.keys().then(function(keyList) {
-            let cacheKeepList = keyList.filter(function(key) {
-                return key.indexOf(APP_PREFIX);
-            })
-            cacheKeepList.push(CACHE_NAME);
-            return Promise.all(keyList.map(function (key, i) {
-                if(cacheKeepList.indexOf(key) === -1) {
-                    console.log('Deleting cache: ' + keyList[i]);
-                    return caches.delete(keyList[i]);
+  
+    self.skipWaiting();
+  });
+  
+  self.addEventListener("activate", (evt) => {
+    // remove old caches
+    evt.waitUntil(
+      caches.keys().then((keyList) => {
+        return Promise.all(
+          keyList.map((key) => {
+            if (key !== CACHE_NAME && key !== DATA_CACHE_NAME) {
+              return caches.delete(key);
+            }
+          })
+        );
+      })
+    );
+  
+    self.clients.claim();
+  });
+  
+  self.addEventListener("fetch", (evt) => {
+    // cache successful GET requests to the API
+    if (evt.request.url.includes("/api/") && evt.request.method === "GET") {
+      evt.respondWith(
+        caches
+          .open(DATA_CACHE_NAME)
+          .then((cache) => {
+            return fetch(evt.request)
+              .then((response) => {
+                // If the response was good, clone it and store it in the cache.
+                if (response.status === 200) {
+                  cache.put(evt.request, response.clone());
                 }
-            }));
-        })
+  
+                return response;
+              })
+              .catch(() => {
+                // Network request failed, try to get it from the cache.
+                return cache.match(evt.request);
+              });
+          })
+          .catch((err) => console.log(err))
+      );
+  
+      return;
+    }
+  
+    evt.respondWith(
+      caches.match(evt.request).then((response) => {
+        return response || fetch(evt.request);
+      })
     );
-});
+  });
